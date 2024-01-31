@@ -25,24 +25,20 @@ class FCLayer():
 
 
 	def forward(self, Input):
-
-		############################################################################
-	    # TODO: 
-		# 对输入计算Wx+b并返回结果.
-
-
-	    ############################################################################
-
+		"""
+		对输入计算Wx+b并返回结果
+		"""
+		self.input = Input
+		return np.dot(Input, self.W) + self.b
 
 	def backward(self, delta):
-		# 输入的delta由下一层计算得到
-		############################################################################
-	    # TODO: 
-		# 根据delta计算梯度
-
-
-	    ############################################################################
-
+		"""
+		根据delta计算梯度
+		"""
+		self.grad_W = np.dot(self.input.T, delta)
+		self.grad_b = np.sum(delta, axis=0, keepdims=True)
+		delta = np.dot(delta, self.W.T)
+		return delta
 
 	def XavierInit(self):
 		# 初始化，无需了解.

@@ -16,23 +16,20 @@ class SoftmaxCrossEntropyLossLayer():
 	      - logit: 最后一个全连接层的输出结果, 尺寸(batch_size, 10)
 	      - gt: 真实标签, 尺寸(batch_size, 10)
 	    """
+		# 计算softmax激活函数
+		exp_logit = np.exp(logit - np.max(logit, axis=1, keepdims=True))
+		self.softmax_output = exp_logit / np.sum(exp_logit, axis=1, keepdims=True)
 
-		############################################################################
-	    # TODO: 
-		# 在minibatch内计算平均准确率和损失，分别保存在self.accu和self.loss里(将在solver.py里自动使用)
-		# 只需要返回self.loss
+		# 计算交叉熵损失
+		self.loss = -np.sum(gt * np.log(self.softmax_output + EPS)) / logit.shape[0]
 
+		# 计算平均准确率
+		self.acc = np.sum(np.argmax(logit, axis=1) == np.argmax(gt, axis=1)) / logit.shape[0]
 
-	    ############################################################################
-
+		# 保存真实标签，用于反向传播
+		self.gt = gt
 		return self.loss
-
-
+	
 	def backward(self):
-
-		############################################################################
-	    # TODO: 
-		# 计算并返回梯度(与logit具有同样的尺寸)
-
-
-	    ############################################################################
+		# 计算梯度
+		return (self.softmax_output - self.gt) / self.gt.shape[0]

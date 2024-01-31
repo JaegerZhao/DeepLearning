@@ -12,15 +12,10 @@ class SGD():
 		layers = model.layerList
 		for layer in layers:
 			if layer.trainable:
+				# 计算梯度更新的变化量
+				layer.diff_W = - self.learningRate * (layer.grad_W + self.weightDecay * layer.W)
+				layer.diff_b = - self.learningRate * layer.grad_b
 
-				############################################################################
-			    # TODO:
-				# 使用layer.grad_W和layer.grad_b计算diff_W and diff_b.
-				# 注意weightDecay项.
-
-
-			    ############################################################################
-
-				# Weight update
+				# 更新权重和偏置项
 				layer.W += layer.diff_W
 				layer.b += layer.diff_b
