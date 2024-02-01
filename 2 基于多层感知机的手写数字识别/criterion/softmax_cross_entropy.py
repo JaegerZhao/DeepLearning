@@ -32,4 +32,4 @@ class SoftmaxCrossEntropyLossLayer():
 	
 	def backward(self):
 		# 计算梯度
-		return (self.softmax_output - self.gt) / self.gt.shape[0]
+		return np.subtract(self.softmax_output, self.gt) / self.gt.shape[0]

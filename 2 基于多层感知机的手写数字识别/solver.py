@@ -13,7 +13,8 @@ def train(model, criterion, optimizer, dataset, max_epoch, batch_size, disp_freq
 	avg_train_loss, avg_train_acc = [], []
 	avg_val_loss, avg_val_acc = [], []
 	get_next = dataset.batch(TRAIN_NUM).make_one_shot_iterator().get_next()
-	config = tf.ConfigProto(device_count={'GPU': 0})
+	config = tf.ConfigProto()
+	config.gpu_options.allow_growth = True  # 允许 GPU 内存动态增长
 	with tf.Session(config=config) as sess:
 		# split raw training data(60000) to train_set(55000) and val_set(5000)
 		tmp1, tmp2 = sess.run(get_next)
@@ -123,3 +124,4 @@ def test(model, criterion, dataset, batch_size, disp_freq):
 			batch_test_acc.append(criterion.acc)
 
 	print("The test accuracy is {:.4f}.\n".format(np.mean(batch_test_acc)))
+	return np.mean(batch_test_acc)
