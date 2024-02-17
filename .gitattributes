@@ -1,2 +1,3 @@
 1[[:space:]]基于Softmax的手写数字识别/data/t10k-images.idx3-ubyte filter=lfs diff=lfs merge=lfs -text
 1[[:space:]]基于Softmax的手写数字识别/data/train-images.idx3-ubyte filter=lfs diff=lfs merge=lfs -text
+3[[:space:]]PyTorch实战_CIFAR10图像分类/data/cifar-10-python.tar.gz filter=lfs diff=lfs merge=lfs -text
