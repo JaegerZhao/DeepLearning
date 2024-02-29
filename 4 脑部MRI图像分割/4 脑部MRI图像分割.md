@@ -95,3 +95,92 @@
 > [7] TensorBoard参考资料：https://www.tensorflow.org/tensorboard 
 >
 > [8] Minaee et al. Image Segmentation Using Deep Learning: A Survey. arXiv 2020.
+
+
+
+## 2 通过云平台训练基础代码
+
+​	本次实验由于运行时间较长，占用内存较大，所以选择了用学堂在线的 **和鲸云平台** 来进行训练。下面介绍是如何使用云平台训练基础代码的。
+
+1. 数据集接入
+
+   本次实验采用Brain MRI数据集，该数据集已被上传到了云平台的共享数据中，可以直接调用。
+
+   ![image-20240228231424167](https://raw.githubusercontent.com/ZzDarker/figure/main/img/image-20240228231424167.png)
+
+2. 项目创建
+
+   此处没有采用直接fork作业中的文件，因为作业中的文件与本地有所不同，经对比，采用从学堂在线下载文件训练效果更好。
+
+   在我的空间里，点击新建，创建项目，输入项目名称，选择数据源，完成项目的创建。
+
+   ![image-20240228231837429](https://raw.githubusercontent.com/ZzDarker/figure/main/img/image-20240228231837429.png)
+
+3. 环境配置
+
+   创建完成后，点击右上角齿轮按钮，配置项目环境。
+
+   ![image-20240228232023797](https://raw.githubusercontent.com/ZzDarker/figure/main/img/image-20240228232023797.png)
+
+   选择 `T4 GPU` ，基础环境选择 `Pytorch 2.0.1 Cuda11.7 Python3.10` 的版本。
+
+   ![image-20240228232312501](https://raw.githubusercontent.com/ZzDarker/figure/main/img/image-20240228232312501.png)
+
+   点击，运行完成基础环境配置。然后导入从学堂在线下载的实验四文件。
+
+   
+
+   按照其中 `train.ipynb` 的内容安装其他依赖库。即在notebook里的代码格输入以下内容，注意前面要加 `!` 。
+
+   ```cmd
+   !pip install ipykernel==6.26.* matplotlib==3.8.* medpy==0.4.* scipy==1.11.* numpy==1.23.* scikit-image==0.22.* imageio==2.31.* tensorboard==2.15.* tqdm==4.* -i https://pypi.tuna.tsinghua.edu.cn/simple
+   ```
+
+4. 训练项目
+
+   云平台支持在线训练和离线训练两种方式，其中在线训练要求网络保持通畅不能断网，离线训练最好在在线训练跑通后再进行训练。
+
+   - 在线训练
+
+     首先需要修改数据集地址，不然无法训练。在 `train.ipynb` 的 `args` 中，将 `images` 的路径替换成如下内容。
+
+     ```py
+     images = '../input/02039681/utf-8kaggle_3m/kaggle_3m'
+     ```
+
+     默认训练轮次是100轮，实际上训练100轮太多了，20轮足矣。所以我选择将轮次更改成20轮。
+
+     ```py
+     epochs = 20,
+     ```
+
+     在配置好后，在 `train.ipynb` 界面，点击任务栏的 `运行所有` 键，开始U-net模型的训练。
+
+     ![8e9820121aa65ac6daa527de5a8c8c6](https://raw.githubusercontent.com/ZzDarker/figure/main/img/8e9820121aa65ac6daa527de5a8c8c6.png)
+
+     训练结束后，会在 `project` 栏中，生成以下内容：
+
+     -  `log`文件夹：记录训练日志。
+     - `prediction` 文件夹：记录所有脑部图片的测试标注结果。
+
+   - 离线训练
+
+     离线训练首先需要将配置好的环境，保存成私有镜像。点击任务栏的 `镜像` →`保存当前环境` 等待配置后，保存成功当前环境。
+
+     ![image-20240228234854084](https://raw.githubusercontent.com/ZzDarker/figure/main/img/image-20240228234854084.png)
+
+     然后点击任务栏中的 `离线任务`，选择刚才配置好的镜像，即可进行离线训练。
+
+     离线训练时，可以从云平台侧边栏的离线任务中，查看离线任务的运行状态，包括内存、CPU占用等。
+
+     ![image-20240228235203999](https://raw.githubusercontent.com/ZzDarker/figure/main/img/image-20240228235203999.png)
+
+     离线任务运行结束后，若运行的没有问题，则可以保存回原文件，得到在线任务提到的两个文件夹。
+
+5. 项目测试
+
+   在训练结束后，选择 `inference.ipynb` 文件进行测试，按训练项目中的步骤，替换数据集路径。点击运行所有完成项目的测试。
+
+   在测试结束后，可以得到一个 `dsc.png` 图片记录了不同类别图像的DSC（迪斯相似系数）值。
+
+   ![dsc_klab_2_upload](https://raw.githubusercontent.com/ZzDarker/figure/main/img/dsc_klab_2_upload.png)
