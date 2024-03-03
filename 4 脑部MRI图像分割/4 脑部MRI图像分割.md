@@ -831,5 +831,22 @@ U-Net 的主要特点包括：
 
 ## 5 代码优化
 
+### 5.1 优化loss
+
+
+
+### 5.2 加入Attention
+
+![image-20240304022934568](https://raw.githubusercontent.com/ZzDarker/figure/main/img/image-20240304022934568.png)
+
+![image-20240304022954313](https://raw.githubusercontent.com/ZzDarker/figure/main/img/image-20240304022954313.png)
+
+![image-20240304023022203](https://raw.githubusercontent.com/ZzDarker/figure/main/img/image-20240304023022203.png)
+
 [(99+ 封私信 / 81 条消息) 周纵苇 - 知乎 (zhihu.com)](https://www.zhihu.com/people/zongweiz/posts)
 
+### 5.3 Unet++
+
+[Unet-Segmentation-Pytorch-Nest-of-Unets/Models.py at master · bigmb/Unet-Segmentation-Pytorch-Nest-of-Unets (github.com)](https://github.com/bigmb/Unet-Segmentation-Pytorch-Nest-of-Unets/blob/master/Models.py)
+
+[ShawnBIT/UNet-family: Paper and implementation of UNet-related model. (github.com)](https://github.com/ShawnBIT/UNet-family/tree/master)
