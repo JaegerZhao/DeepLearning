@@ -197,7 +197,7 @@
 
 ​	在训练结束后，选择 `inference.ipynb` 文件进行测试，按训练项目中的步骤，替换数据集路径。点击运行所有完成项目的测试。
 
-在测试结束后，可以得到一个 `dsc.png` 图片记录了不同类别图像的DSC（迪斯相似系数）值。图中的红线为所有DSC值的均值，绿线为DSC值的中值。
+在测试结束后，可以得到一个 `dsc.png` 图片记录了不同类别图像的DSC（迪斯相似系数）值。**图中的红线为所有DSC值的均值，绿线为DSC值的中值。**
 
 ![dsc_klab_2_upload](https://raw.githubusercontent.com/ZzDarker/figure/main/img/dsc_klab_2_upload.png)
 
@@ -833,20 +833,438 @@ U-Net 的主要特点包括：
 
 ### 5.1 优化loss
 
+​	我分别采用 SoftIoULoss 和 Calc Loss 来替代 Dice Loss，结果如下。
 
+1. **SoftIoULoss**
 
-### 5.2 加入Attention
+   SoftIoULoss 是一种用于语义分割任务的损失函数，它是在 IoU(Intersection over Union) 的基础上进行了平滑处理，以便更好地优化训练过程。IoU是一种常用的指标，用于衡量预测结果和真实标签之间的相似度。
+   $$
+   \text{SoftIoULoss} = 1 - \frac{\sum_{i=1}^N \text{pred}_i \text{target}_i + \epsilon}{\sum_{i=1}^N \text{pred}_i + \sum_{i=1}^N \text{target}_i - \sum_{i=1}^N \text{pred}_i \text{target}_i + \epsilon}
+   $$
+   其中，$N$ 是像素的总数，$\text{pred}_i$和$\text{target}_i$分别是第$i$个像素的预测值和真实值，$\epsilon$​​是一个很小的正数，用于避免除零错误。
 
-![image-20240304022934568](https://raw.githubusercontent.com/ZzDarker/figure/main/img/image-20240304022934568.png)
+   下面是SoftIoULoss的代码实现
 
-![image-20240304022954313](https://raw.githubusercontent.com/ZzDarker/figure/main/img/image-20240304022954313.png)
+   ```py
+   def SoftIoULoss(pred, target, epsilon=1e-6):
+       # 将预测值缩放到0到1之间
+       pred = torch.sigmoid(pred)
+       # 设置一个平滑因子，避免除零错误
+       smooth = epsilon
+       # 计算预测值和真实值之间的交集
+       intersection = pred * target
+       # 计算预测值和真实值之间的并集
+       union = pred + target - intersection
+       # 计算IoU
+       iou = (intersection.sum() + smooth) / (union.sum() + smooth)
+       # 计算SoftIoULoss
+       loss = 1 - iou.mean()
+       return loss
+   ```
 
-![image-20240304023022203](https://raw.githubusercontent.com/ZzDarker/figure/main/img/image-20240304023022203.png)
+   采用 SoftIoULoss 作为损失函数，最终训练结果如下，DSC值有所下降，说明该损失函数表现不如Dice Loss。
 
-[(99+ 封私信 / 81 条消息) 周纵苇 - 知乎 (zhihu.com)](https://www.zhihu.com/people/zongweiz/posts)
+   ```cmd
+   Best validation mean DSC: 0.874558
+   ```
+
+   各样本测试得到的DSC图如下所示。
+
+   ![dsc_unet_IoU](https://raw.githubusercontent.com/ZzDarker/figure/main/img/dsc_unet_IoU.png)
+
+   与基于Dice Loss训练集上的Loss曲线，验证集上的DSC、Loss曲线对比，结果如下所示。
+
+   ![image-20240305005124195](https://raw.githubusercontent.com/ZzDarker/figure/main/img/image-20240305005124195.png)
+
+   ![image-20240305005210459](https://raw.githubusercontent.com/ZzDarker/figure/main/img/image-20240305005210459.png)
+
+   ![image-20240305005229136](https://raw.githubusercontent.com/ZzDarker/figure/main/img/image-20240305005229136.png)
+
+   由图可知，基于 SoftIoULoss 训练的Unet模型，训练集和测试集的loss基本没有降低，测试集的DSC曲线始终在基于 Dice Loss 训练的下方。说明该任务不适合使用 SoftIoULoss 进行训练。
+
+2. **calc loss**
+
+   calc loss 是一种用于计算图像分割任务的损失函数，它结合了 **二元交叉熵损失(BCE Loss)** 和 **Dice损失(Dice Loss)** 。BCE Loss用于衡量预测值和真实值之间的逐像素的差异，Dice Loss用于衡量预测值和真实值之间的重叠区域的比例。bce_weight是一个超参数，用于控制两种损失的权重。
+
+   calc loss可以同时考虑像素级别和区域级别的分割性能，提高分割的准确性和鲁棒性。
+
+   其计算公式如下：
+   $$
+   \text{calc loss} = \text{BCE Loss} * \text{bce weight} + \text{Dice Loss} * (1 - \text{bce weight})
+   $$
+   其中，BCE Loss和Dice Loss的计算公式分别为：
+   $$
+   \text{BCE Loss} = -\frac {1} {N} \sum_ {i=1}^ {N} \left [y_ {i} \log p_ {i} + (1 - y_ {i}) \log (1 - p_ {i})\right]\\
+   \text{Dice Loss} = 1 - \frac {2 \sum_ {i=1}^ {N} y_ {i} p_ {i} + \epsilon} {\sum_ {i=1}^ {N} y_ {i} + \sum_ {i=1}^ {N} p_ {i} + \epsilon}
+   
+   $$
+   其中，$N$是像素的总数，$y_ {i}$和$p_ {i}$分别是第$i$个像素的真实值和预测值，$\epsilon$​是一个很小的正数，用于避免除零错误。
+
+   下面是calc loss的代码实现：
+
+   ```py
+   def calc_loss(prediction, target, bce_weight=0.5):
+       # 计算BCE Loss，使用logits作为输入，避免重复计算sigmoid
+       bce = F.binary_cross_entropy_with_logits(prediction, target)
+       # 计算sigmoid，将logits转换为概率
+       prediction = F.sigmoid(prediction)
+       # 计算Dice Loss，使用自定义的dice_loss函数
+       dice = dice_loss(prediction, target)
+       # 计算总的损失，根据bce_weight的值进行加权
+       loss = bce * bce_weight + dice * (1 - bce_weight)
+       return loss
+   ```
+
+   采用 calc loss 作为损失函数，最终训练结果如下，DSC值有细微提升，说明该损失函数表现比 Dice Loss略有提升。
+
+   ```cmd
+   Best validation mean DSC: 0.915542
+   ```
+
+   各样本测试得到的DSC图如下所示。
+
+   ![dsc_calcloss](https://raw.githubusercontent.com/ZzDarker/figure/main/img/dsc_calcloss.png)
+
+   与基于Dice Loss训练集上的Loss曲线，验证集上的DSC、Loss曲线对比，结果如下所示。
+
+   ![image-20240305004707209](https://raw.githubusercontent.com/ZzDarker/figure/main/img/image-20240305004707209.png)
+
+   ![image-20240305004725042](https://raw.githubusercontent.com/ZzDarker/figure/main/img/image-20240305004725042.png)
+
+   ![image-20240305004842983](https://raw.githubusercontent.com/ZzDarker/figure/main/img/image-20240305004842983.png)
+
+   由图可知，基于 Calc Loss 的loss曲线，在训练集和测试集上，都收敛在了一个较大的值，但是从测试集上DSC曲线来看，模型效果与 Dice Loss 不相上下。
+
+### 5.2 添加注意力机制(Attention)
+
+​	我在Unet的每个解码器模块，添加了注意力模块，基于注意力机制的 U-Net 网络旨在通过 Attention Gate 帮助模型更有效地聚焦于图像中的重要区域，提高图像分割的性能。
+
+1. 基于注意力机制的Unet网络
+
+   ​	基于注意力机制的Unet网络是一种用于图像分割的深度学习模型，它在经典的Unet网络的基础上增加了注意力门（Attention Gate）模块，用于自动学习在不同尺度上关注哪些特征。
+
+   ![att-unet.png](https://raw.githubusercontent.com/ZzDarker/figure/main/img/att-unet.png)
+
+   ​	注意力门模块的作用是根据输入的两个特征图，生成一个注意力权重图，用于对其中一个特征图进行加权，从而突出目标区域，抑制背景区域。注意力门模块可以嵌入到Unet网络的上采样路径中，与下采样路径中的特征图进行融合，提高分割的精度和鲁棒性。
+
+2. 代码设计
+
+   以下是AttentionGate类的代码，它包含一个卷积层和 Sigmoid 激活函数。
+
+   - 通过对两个输入张量执行卷积，然后使用双线性插值将结果上采样到与第二个输入张量相同的大小，最后通过 Sigmoid 激活函数产生一个介于 0 到 1 之间的权重。
+   - 通过将这个权重应用于第二个输入张量，产生了加强的特征图，这有助于模型更好地关注感兴趣的区域。
+
+   ```py
+   class AttentionGate(nn.Module):
+       def __init__(self, in_channels, out_channels):
+           super(AttentionGate, self).__init__()
+   
+           self.conv = nn.Conv2d(in_channels, out_channels, kernel_size=1, stride=1, padding=0)
+           self.sigmoid = nn.Sigmoid()
+   
+       def forward(self, x1, x2):
+           g = self.conv(x1)
+           g = F.interpolate(g, size=x2.size()[2:], mode='bilinear', align_corners=False)
+           x = x2 * self.sigmoid(g)
+           return x
+   ```
+
+   以下是解码器模块代码，在每个解码器块中，通过使用 AttentionGate 增强的特征图与对应的编码器块的特征图进行连接。这种连接方式旨在使解码器能够更好地利用编码器中学到的信息。
+
+   ```py
+   def __init__(self, in_channels=3, out_channels=1, init_features=32):
+       ...
+       # Attention Gates
+       self.attention_gate1 = AttentionGate(features, features)
+       self.attention_gate2 = AttentionGate(features * 2, features * 2)
+       self.attention_gate3 = AttentionGate(features * 4, features * 4)
+       self.attention_gate4 = AttentionGate(features * 8, features * 8)
+   	...
+       
+   def forward(self, x):
+       ...
+       # Attention gates
+       dec4 = self.upconv4(bottleneck)
+       dec4 = self.attention_gate4(enc4, dec4)
+       dec4 = torch.cat((dec4, enc4), dim=1)
+       dec4 = self.decoder4(dec4)
+       ...
+   	dec1 = self.upconv1(dec2)
+       dec1 = self.attention_gate1(enc1, dec1)
+       dec1 = torch.cat((dec1, enc1), dim=1)
+       dec1 = self.decoder1(dec1)
+       ...
+   ```
+
+3. 性能分析
+
+   训练结束后，基于Attention的Unet网络得到的Best mean DSC值如下，比Unet网络较好。
+
+   ```cmd
+   Best validation mean DSC: 0.914510
+   ```
+
+   各样本测试得到的DSC图如下所示。
+
+   ![dsc_attUnet](https://raw.githubusercontent.com/ZzDarker/figure/main/img/dsc_attUnet.png)
+
+   与Unet网络在训练集上的Loss曲线，验证集上的DSC、Loss曲线对比，结果如下所示。
+
+   ![image-20240304022934568](https://raw.githubusercontent.com/ZzDarker/figure/main/img/image-20240304022934568.png)
+
+   ![image-20240304022954313](https://raw.githubusercontent.com/ZzDarker/figure/main/img/image-20240304022954313.png)
+
+   ![image-20240304023022203](https://raw.githubusercontent.com/ZzDarker/figure/main/img/image-20240304023022203.png)
+
+   由上图可知，添加注意力机制后的模型，收敛速度更快，在收敛后，测试集测试DSC值更稳定，效果更好。
+
+### 5.3 ResUnet
+
+​	我创建了一个基于 ResNet34 架构的 U-Net 模型，采用了预训练的ResNet34模型作为编码器，结合了 ResNet34 的强大特征提取能力和 U-Net 结构的特征融合机制，通过上采样和特征图融合操作进行细化，用于图像分割任务。
+
+1. ResNet34
+
+   ResNet34 包含34层卷积层和全连接层，相对于传统的网络结构，其深度相对较大，属于残差网络（Residual Network，简称 ResNet）系列之一。通过引入残差块（Residual Blocks）的概念，成功地解决了深层神经网络训练过程中的梯度消失和梯度爆炸问题，使得训练非常深的网络变得可行。
+
+2. 代码设计
+
+   - 编码器架构
+
+     使用预训练的 ResNet34 模型，将其前卷积层（`conv1`）、批归一化层（`bn1`）、ReLU 激活层（`relu`）、最大池化层（`maxpool`）以及四个残差块（`layer1`到`layer4`）作为编码器部分。
+
+     Encoder 的输出是具有不同尺寸的特征图，其中 `e1` 是第一个残差块的输出，`e2` 是第二个残差块的输出，以此类推。
+
+     ```py
+     filters = [64, 128, 256, 512]
+     resnet = models.resnet34(pretrained=pretrained)
+     self.firstconv = resnet.conv1
+     self.firstbn = resnet.bn1
+     self.firstrelu = resnet.relu
+     self.firstmaxpool = resnet.maxpool
+     self.encoder1 = resnet.layer1
+     self.encoder2 = resnet.layer2
+     self.encoder3 = resnet.layer3
+     self.encoder4 = resnet.layer4
+     ```
+
+   - 解码器架构
+
+     使用自定义的 `DecoderBlock` 类来构建解码器部分。每个解码器块都包括上采样操作和特征图融合操作，其中上采样使用 `nn.ConvTranspose2d` 实现。
+
+     将解码器块按照从深层到浅层的顺序进行连接，最终得到 `d4`，`d3`，`d2` 和 `d1`，分别对应不同层次的解码器块的输出。
+
+     ```py
+     self.decoder4 = DecoderBlock(512, filters[2])
+     self.decoder3 = DecoderBlock(filters[2], filters[1])
+     self.decoder2 = DecoderBlock(filters[1], filters[0])
+     self.decoder1 = DecoderBlock(filters[0], filters[0])
+     ```
+
+3. 性能分析
+
+   训练结束后基于ResNet34的Unet网络得到的Best mean DSC值如下，与Unet网络相近。
+
+   ```cmd
+   Best validation mean DSC: 0.911739
+   ```
+
+   各样本测试得到的DSC图如下所示。
+
+   ![dsc_resunet](https://raw.githubusercontent.com/ZzDarker/figure/main/img/dsc_resunet.png)
+
+   与Unet网络在训练集上的Loss曲线，验证集上的DSC、Loss曲线对比，结果如下所示。
+
+   ![image-20240305021637377](https://raw.githubusercontent.com/ZzDarker/figure/main/img/image-20240305021637377.png)
+
+   ![image-20240305021653540](https://raw.githubusercontent.com/ZzDarker/figure/main/img/image-20240305021653540.png)
+
+   ![image-20240305021713333](https://raw.githubusercontent.com/ZzDarker/figure/main/img/image-20240305021713333.png)
+
+   由上图可以看出，基于ResNet34的UNet网络的收敛速度非常快，在训练集和测试集的loss都比UNet网络的要低，且测试集上该网络的DSC值也收敛更快，更平稳，但峰值与Unet相似。
 
 ### 5.3 Unet++
 
-[Unet-Segmentation-Pytorch-Nest-of-Unets/Models.py at master · bigmb/Unet-Segmentation-Pytorch-Nest-of-Unets (github.com)](https://github.com/bigmb/Unet-Segmentation-Pytorch-Nest-of-Unets/blob/master/Models.py)
+​	最后，我尝试了采用结构比较复杂的Unet++进行训练。
 
-[ShawnBIT/UNet-family: Paper and implementation of UNet-related model. (github.com)](https://github.com/ShawnBIT/UNet-family/tree/master)
+1. Unet++
+
+   Unet++（Neted Unet）是对传统U-Net架构的扩展和改进，旨在提高分割任务的性能。UNet++ 在U-Net的基础上引入了密集和多尺度的连接，以便更好地融合不同层次的特征。这包括从浅层到深层的连接，以及在同一层级上的多个分支。
+
+   ![nested](https://raw.githubusercontent.com/ZzDarker/figure/main/img/nested.jpg)
+
+   UNet++ 的核心思想是将多个U-Net结构嵌套在一起，形成一个金字塔状的结构。每个U-Net结构被视为一个“子网”，并且每个子网都有自己的编码器和解码器，它们通过特征金字塔连接进行信息交换。
+
+   在UNet++中，通过每个子网的解码器部分将来自其他子网的信息集成到当前子网中。这种集成机制有助于更好地利用不同层次和尺度的信息，提高模型的表达能力。
+
+2. 代码设计
+
+   - **初始化函数**
+
+     `__init__` 函数定义了 UNet_Nested 类的初始化，包括输入通道数（`in_channels`）、输出类别数（`n_classes`）、特征缩放比例（`feature_scale`）、是否使用反卷积（`is_deconv`）、是否使用批归一化（`is_batchnorm`）以及是否使用密集连接（`is_ds`）等参数。
+
+     ```py
+     class UNet_Nested(nn.Module):
+     
+         def __init__(self, in_channels=1, n_classes=2, feature_scale=2, is_deconv=True, is_batchnorm=True, is_ds=True):
+             super(UNet_Nested, self).__init__()
+             self.in_channels = in_channels
+             self.feature_scale = feature_scale
+             self.is_deconv = is_deconv
+             self.is_batchnorm = is_batchnorm
+             self.is_ds = is_ds
+     ```
+
+   - **特征缩放和网络结构定义**
+
+     在初始化函数中，首先根据特征缩放比例计算每个层级的特征通道数。
+
+     ```py
+             filters = [64, 128, 256, 512, 1024]
+             filters = [int(x / self.feature_scale) for x in filters]
+     ```
+
+     然后定义下采样操作。
+
+     ```py
+             # downsampling
+             self.maxpool = nn.MaxPool2d(kernel_size=2)
+             self.conv00 = unetConv2(self.in_channels, filters[0], self.is_batchnorm)
+             self.conv10 = unetConv2(filters[0], filters[1], self.is_batchnorm)
+             self.conv20 = unetConv2(filters[1], filters[2], self.is_batchnorm)
+             self.conv30 = unetConv2(filters[2], filters[3], self.is_batchnorm)
+             self.conv40 = unetConv2(filters[3], filters[4], self.is_batchnorm)
+     ```
+
+     定义上采样操作。
+
+     ```py
+             # upsampling
+             self.up_concat01 = unetUp(filters[1], filters[0], self.is_deconv)
+             self.up_concat11 = unetUp(filters[2], filters[1], self.is_deconv)
+             self.up_concat21 = unetUp(filters[3], filters[2], self.is_deconv)
+             self.up_concat31 = unetUp(filters[4], filters[3], self.is_deconv)
+     
+             self.up_concat02 = unetUp(filters[1], filters[0], self.is_deconv, 3)
+             self.up_concat12 = unetUp(filters[2], filters[1], self.is_deconv, 3)
+             self.up_concat22 = unetUp(filters[3], filters[2], self.is_deconv, 3)
+     
+             self.up_concat03 = unetUp(filters[1], filters[0], self.is_deconv, 4)
+             self.up_concat13 = unetUp(filters[2], filters[1], self.is_deconv, 4)
+             
+             self.up_concat04 = unetUp(filters[1], filters[0], self.is_deconv, 5)
+     ```
+
+   - **前向传播函数：**
+
+     `forward` 函数定义了整个网络的前向传播过程。在前向传播中，通过一系列的卷积和上采样操作，将输入的特征图经过多个列的特征提取和上采样连接，最终得到分割的结果。
+
+     每个列内的特征上采样与相邻列的特征进行连接，实现了多层次的特征融合，有助于提高网络对不同尺度和层级的信息的捕获能力。
+
+     ```py
+         def forward(self, inputs):
+             # column : 0
+             X_00 = self.conv00(inputs)       # 16*512*512
+             maxpool0 = self.maxpool(X_00)    # 16*256*256
+             X_10= self.conv10(maxpool0)      # 32*256*256
+             maxpool1 = self.maxpool(X_10)    # 32*128*128
+             X_20 = self.conv20(maxpool1)     # 64*128*128
+             maxpool2 = self.maxpool(X_20)    # 64*64*64
+             X_30 = self.conv30(maxpool2)     # 128*64*64
+             maxpool3 = self.maxpool(X_30)    # 128*32*32
+             X_40 = self.conv40(maxpool3)     # 256*32*32
+             # column : 1
+             X_01 = self.up_concat01(X_10,X_00)
+             X_11 = self.up_concat11(X_20,X_10)
+             X_21 = self.up_concat21(X_30,X_20)
+             X_31 = self.up_concat31(X_40,X_30)
+             # column : 2
+             X_02 = self.up_concat02(X_11,X_00,X_01)
+             X_12 = self.up_concat12(X_21,X_10,X_11)
+             X_22 = self.up_concat22(X_31,X_20,X_21)
+             # column : 3
+             X_03 = self.up_concat03(X_12,X_00,X_01,X_02)
+             X_13 = self.up_concat13(X_22,X_10,X_11,X_12)
+             # column : 4
+             X_04 = self.up_concat04(X_13,X_00,X_01,X_02,X_03)
+     ```
+
+   - **最终输出：**
+
+     最终输出通过四个独立的卷积层（`final_1`到`final_4`）进行，然后这些输出通过相加平均得到 `final`，作为最终的分割结果。
+
+     ```py
+             # final layer
+             final_1 = self.final_1(X_01)
+             final_2 = self.final_2(X_02)
+             final_3 = self.final_3(X_03)
+             final_4 = self.final_4(X_04)
+     
+             final = (final_1+final_2+final_3+final_4)/4
+     ```
+
+   - **密集连接：**
+
+     `is_ds` 参数控制是否使用密集连接（Dense Connection），即每个上采样层都使用前面所有层的特征图。
+
+     ```py
+             if self.is_ds:
+                 return final
+             else:
+                 return final_4
+     ```
+
+3. 性能分析
+
+   Unet++网络训练处来效果很差，训练100epoch，得到最佳的DSC值只有0.024。
+
+   ```cmd
+   Best validation mean DSC: 0.024353
+   ```
+
+   各样本测试得到的DSC图如下所示。
+
+   ![dsc_unet++](https://raw.githubusercontent.com/ZzDarker/figure/main/img/dsc_unet++.png)
+
+   可以看出每个类别训练出的效果都非常差，查看具体预测出的图像，发现学习出来预测的图片却只在病灶区域边缘圈出了几个点，而不是圈出了整个区域。
+
+   ![TCGA_CS_4944_20010208-10_unet++](https://raw.githubusercontent.com/ZzDarker/figure/main/img/TCGA_CS_4944_20010208-10_unet++.png)
+
+   - CS_4944样本预测图像
+
+     ![TCGA_CS_4944_20010208_unet++](https://raw.githubusercontent.com/ZzDarker/figure/main/img/TCGA_CS_4944_20010208_unet++.gif)
+
+   - HT_7692样本预测图像。
+
+     ![TCGA_HT_7692_19960724_unet++](https://raw.githubusercontent.com/ZzDarker/figure/main/img/TCGA_HT_7692_19960724_unet++.gif)
+
+   与Unet网络在训练集上的Loss曲线，验证集上的DSC、Loss曲线对比，结果如下所示。
+
+   ![image-20240305025246823](https://raw.githubusercontent.com/ZzDarker/figure/main/img/image-20240305025246823.png)
+
+   ![image-20240305025230719](https://raw.githubusercontent.com/ZzDarker/figure/main/img/image-20240305025230719.png)
+
+   ![image-20240305025205085](https://raw.githubusercontent.com/ZzDarker/figure/main/img/image-20240305025205085.png)
+
+   可以看出，Unet++的Loss值在训练集和测试集上都比UNet的低很多，但是训练未能使得其在测试集的DSC表现有任何变好。通过询问助教得知，这样的结果可能是因为模型参数过多，训练时并没有把所有参数都学习收敛，因此模型性能就会比较差。
+
+## 6 总结
+
+​	对比所有模型结果的训练、测试的loss曲线与测试集上的DSC曲线，结果如下。
+
+![image-20240305025610790](https://raw.githubusercontent.com/ZzDarker/figure/main/img/image-20240305025610790.png)
+
+![image-20240305025628312](https://raw.githubusercontent.com/ZzDarker/figure/main/img/image-20240305025628312.png)
+
+![image-20240305025646856](https://raw.githubusercontent.com/ZzDarker/figure/main/img/image-20240305025646856.png)
+
+​	实验可知，通过添加注意力机制、采用CalcLoss，可以提高提取特征能力。采用ResNet34预训练模型，可以加快训练收敛速度。SoftIoULoss不适合该项目的训练，而UNet++因为模型过于复杂，也不适合该项目的训练。
+
+## 参考
+
+> [研习U-Net - 知乎 (zhihu.com)](https://zhuanlan.zhihu.com/p/44958351)
+>
+> [Unet-Segmentation-Pytorch-Nest-of-Unets/Models.py at master · bigmb/Unet-Segmentation-Pytorch-Nest-of-Unets (github.com)](https://github.com/bigmb/Unet-Segmentation-Pytorch-Nest-of-Unets/blob/master/Models.py)
+>
+> [ShawnBIT/UNet-family: Paper and implementation of UNet-related model. (github.com)](https://github.com/ShawnBIT/UNet-family/tree/master)
+>
+> [Andy-zhujunwen/UNET-ZOO: including unet,unet++,attention-unet,r2unet,cenet,segnet ,fcn. (github.com)](https://github.com/Andy-zhujunwen/UNET-ZOO/tree/master)
