@@ -197,7 +197,7 @@
 
 ​	在训练结束后，选择 `inference.ipynb` 文件进行测试，按训练项目中的步骤，替换数据集路径。点击运行所有完成项目的测试。
 
-在测试结束后，可以得到一个 `dsc.png` 图片记录了不同类别图像的DSC（迪斯相似系数）值。
+在测试结束后，可以得到一个 `dsc.png` 图片记录了不同类别图像的DSC（迪斯相似系数）值。图中的红线为所有DSC值的均值，绿线为DSC值的中值。
 
 ![dsc_klab_2_upload](https://raw.githubusercontent.com/ZzDarker/figure/main/img/dsc_klab_2_upload.png)
 
