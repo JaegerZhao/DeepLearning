@@ -1,6 +1,8 @@
 import torch
 from torch import nn
 import torchvision
+import torch.nn.functional as F
+
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -49,13 +51,6 @@ class Encoder(nn.Module):
 
 class DecoderWithRNN(nn.Module):
     def __init__(self, cfg, encoder_dim=14*14*2048):
-        """
-        :param embed_dim: embedding size
-        :param decoder_dim: size of decoder's RNN
-        :param vocab_size: size of vocabulary
-        :param encoder_dim: feature size of encoded images
-        :param dropout: dropout
-        """
         super(DecoderWithRNN, self).__init__()
 
         self.encoder_dim = encoder_dim
@@ -65,17 +60,19 @@ class DecoderWithRNN(nn.Module):
         self.dropout = cfg['dropout']
         self.device = cfg['device']
 
-        ############################################################################
         # To Do: define some layers for decoder with RNN
-        # self.embedding : Embedding layer
-        # self.decode_step : decoding LSTMCell, using nn.LSTMCell
-        # self.init : linear layer to find initial input of LSTMCell
-        # self.bn : Batch Normalization for encoder's output
-        # self.fc : linear layer to transform hidden state to scores over vocabulary
-        # other layers you may need
-        # Your Code Here!
-        
-        ############################################################################
+        # 嵌入层
+        self.embedding = nn.Embedding(self.vocab_size, self.embed_dim)
+        # LSTMCell 层
+        self.decode_step = nn.LSTMCell(self.decoder_dim, self.decoder_dim)
+        # 线性层
+        self.init = nn.Linear(self.encoder_dim, self.decoder_dim)
+        # 批量归一化层
+        self.bn = nn.BatchNorm1d(self.decoder_dim)
+        # 全连接层
+        self.fc = nn.Linear(self.decoder_dim, self.vocab_size)
+        # Dropout 层 
+        self.dropout = nn.Dropout(self.dropout)
 
         # initialize some layers with the uniform distribution
         self.embedding.weight.data.uniform_(-0.1, 0.1)
@@ -83,70 +80,52 @@ class DecoderWithRNN(nn.Module):
         self.fc.weight.data.uniform_(-0.1, 0.1)
 
     def load_pretrained_embeddings(self, embeddings):
-        """
-        Loads embedding layer with pre-trained embeddings.
-        :param embeddings: pre-trained embeddings
-        """
         self.embedding.weight = nn.Parameter(embeddings)
 
     def fine_tune_embeddings(self, fine_tune=True):
-        """
-        Allow fine-tuning of embedding layer? (Only makes sense to not-allow if using pre-trained embeddings).
-        :param fine_tune: Allow?
-        """
         for p in self.embedding.parameters():
             p.requires_grad = fine_tune
     
     def forward(self, encoder_out, encoded_captions, caption_lengths):
-        """
-        Forward propagation.
-
-        :param encoder_out: encoded images, a tensor of dimension (batch_size, enc_image_size, enc_image_size, encoder_dim)
-        :param encoded_captions: encoded captions, a tensor of dimension (batch_size, max_caption_length)
-        :param caption_lengths: caption lengths, a tensor of dimension (batch_size, 1)
-        :return: scores for vocabulary, sorted encoded captions, decode lengths, sort indices
-        """
-
         batch_size = encoder_out.size(0)
         encoder_out = encoder_out.reshape(batch_size, -1)
         vocab_size = self.vocab_size
-        
+
         # Sort input data by decreasing lengths;
         caption_lengths, sort_ind = caption_lengths.squeeze(1).sort(dim=0, descending=True)
         encoder_out = encoder_out[sort_ind]
         encoded_captions = encoded_captions[sort_ind]
-        
+
         # Embedding
-        embeddings = self.embedding(encoded_captions) # (batch_size, max_caption_length, embed_dim)
+        embeddings = self.embedding(encoded_captions)  # (batch_size, max_caption_length, embed_dim)
         # We won't decode at the <end> position, since we've finished generating as soon as we generate <end>
         # So, decoding lengths are actual lengths - 1
         decode_lengths = (caption_lengths - 1).tolist()
-        # Create tensors to hold word predicion scores
+        # Create tensors to hold word prediction scores
         predictions = torch.zeros(batch_size, max(decode_lengths), vocab_size).to(self.device)
 
         # Initialize LSTM state
         init_input = self.bn(self.init(encoder_out))
-        h, c = self.decode_step(init_input)  # (batch_size_t, decoder_dim)
+        h, c = self.decode_step(init_input)  # (batch_size, decoder_dim)
 
-        ############################################################################
         # To Do: Implement the main decode step for forward pass 
         # Hint: Decode words one by one
         # Teacher forcing is used.
         # At each time-step, generate a new word in the decoder with the previous word embedding
-        # Your Code Here!
+        for t in range(max(decode_lengths)):
+            num = sum([1 if l > t else 0 for l in decode_lengths])
+            preds, h, c = self.one_step(embeddings[:num,t,:], h[:num], c[:num])
+            predictions[:num,t,:] = preds
 
-        ############################################################################
         return predictions, encoded_captions, decode_lengths, sort_ind
-    
+
     def one_step(self, embeddings, h, c):
-        ############################################################################
         # To Do: Implement the one time decode step for forward pass 
         # this function can be used for test decode with beam search
         # return predicted scores over vocabs: preds
         # return hidden state and cell state: h, c
-        # Your Code Here!
-
-        ############################################################################
+        output, (h, c) = self.decode_step(embeddings, (h, c))
+        preds = self.fc(self.dropout(h))
         return preds, h, c
 
 class Attention(nn.Module):
@@ -161,15 +140,14 @@ class Attention(nn.Module):
         :param attention_dim: size of the attention network
         """
         super(Attention, self).__init__()
-        #################################################################
         # To Do: you need to define some layers for attention module
         # Hint: Firstly, define linear layers to transform encoded tensor
         # and decoder's output tensor to attention dim; Secondly, define
-        # attention linear layer to calculate values to be softmax-ed; 
-        # Your Code Here!
+        # attention linear layer to calculate values to be softmax-ed;
+        self.encoder_to_att = nn.Linear(encoder_dim, attention_dim)
+        self.decoder_to_att = nn.Linear(decoder_dim, attention_dim)
+        self.att = nn.Linear(attention_dim, 1)
 
-        #################################################################
-        
     def forward(self, encoder_out, decoder_hidden):
         """
         Forward pass.
@@ -177,31 +155,26 @@ class Attention(nn.Module):
         :param decoder_hidden: previous decoder output, a tensor of dimension (batch_size, decoder_dim)
         :return: attention weighted encoding, weights
         """
-        #################################################################
         # To Do: Implement the forward pass for attention module
         # Hint: follow the equation 
         # "e = f_att(encoder_out, decoder_hidden)"
         # "alpha = softmax(e)"
         # "z = alpha * encoder_out"
-        # Your Code Here!
-        
-        #################################################################
+        # Compute the attention scores with the function f_att
+        att1 = self.encoder_att(encoder_out)
+        att2 = self.decoder_att(decoder_hidden).unsqueeze(1)
+        e = self.att(F.relu(att1 + att2))
+        alpha = F.softmax(e, dim=1)
+        z = (encoder_out * alpha).sum(dim=1)
+
         return z, alpha
 
 class DecoderWithAttention(nn.Module):
     """
-    Decoder.
+    Decoder with Attention.
     """
 
     def __init__(self, cfg, encoder_dim=2048):
-        """
-        :param attention_dim: size of attention network
-        :param embed_dim: embedding size
-        :param decoder_dim: size of decoder's RNN
-        :param vocab_size: size of vocabulary
-        :param encoder_dim: feature size of encoded images
-        :param dropout: dropout
-        """
         super(DecoderWithAttention, self).__init__()
 
         self.encoder_dim = encoder_dim
@@ -212,19 +185,15 @@ class DecoderWithAttention(nn.Module):
         self.dropout = cfg['dropout']
         self.device = cfg['device']
 
-        ############################################################################
         # To Do: define some layers for decoder with attention
-        # self.attention : Attention layer
-        # self.embedding : Embedding layer
-        # self.decode_step : decoding LSTMCell, using nn.LSTMCell
-        # self.init_h : linear layer to find initial hidden state of LSTMCell
-        # self.init_c : linear layer to find initial cell state of LSTMCell
-        # self.beta : linear layer to create a sigmoid-activated gate
-        # self.fc : linear layer to transform hidden state to scores over vocabulary
-        # other layers you may need
-        # Your Code Here!
-
-        ############################################################################
+        self.attention = Attention(encoder_dim, self.decoder_dim, self.attention_dim)
+        self.embedding = nn.Embedding(self.vocab_size, self.embed_dim)
+        self.decode_step = nn.LSTMCell(self.embed_dim + self.attention_dim, self.decoder_dim)
+        self.init_h = nn.Linear(self.attention_dim, self.decoder_dim)
+        self.init_c = nn.Linear(self.attention_dim, self.decoder_dim)
+        self.beta = nn.Sigmoid()
+        self.fc = nn.Linear(self.decoder_dim, self.vocab_size)
+        self.dropout = nn.Dropout(p=self.dropout)
 
         # initialize some layers with the uniform distribution
         self.embedding.weight.data.uniform_(-0.1, 0.1)
@@ -232,30 +201,13 @@ class DecoderWithAttention(nn.Module):
         self.fc.weight.data.uniform_(-0.1, 0.1)
 
     def load_pretrained_embeddings(self, embeddings):
-        """
-        Loads embedding layer with pre-trained embeddings.
-        :param embeddings: pre-trained embeddings
-        """
         self.embedding.weight = nn.Parameter(embeddings)
 
     def fine_tune_embeddings(self, fine_tune=True):
-        """
-        Allow fine-tuning of embedding layer? (Only makes sense to not-allow if using pre-trained embeddings).
-        :param fine_tune: Allow?
-        """
         for p in self.embedding.parameters():
             p.requires_grad = fine_tune
 
     def forward(self, encoder_out, encoded_captions, caption_lengths):
-        """
-        Forward propagation.
-
-        :param encoder_out: encoded images, a tensor of dimension (batch_size, enc_image_size, enc_image_size, encoder_dim)
-        :param encoded_captions: encoded captions, a tensor of dimension (batch_size, max_caption_length)
-        :param caption_lengths: caption lengths, a tensor of dimension (batch_size, 1)
-        :return: scores for vocabulary, sorted encoded captions, decode lengths, weights, sort indices
-        """
-
         batch_size = encoder_out.size(0)
         encoder_dim = encoder_out.size(-1)
         vocab_size = self.vocab_size
@@ -276,35 +228,39 @@ class DecoderWithAttention(nn.Module):
         # So, decoding lengths are actual lengths - 1
         decode_lengths = (caption_lengths - 1).tolist()
 
-        # Create tensors to hold word predicion scores and alphas
+        # Create tensors to hold word prediction scores and alphas
         predictions = torch.zeros(batch_size, max(decode_lengths), vocab_size).to(self.device)
         alphas = torch.zeros(batch_size, max(decode_lengths), num_pixels).to(self.device)
 
         # Initialize LSTM state
         mean_encoder_out = encoder_out.mean(dim=1)
-        h = self.init_h(mean_encoder_out)    # (batch_size, decoder_dim)
+        h = self.init_h(mean_encoder_out)  # (batch_size, decoder_dim)
         c = self.init_c(mean_encoder_out)
 
-        ############################################################################
         # To Do: Implement the main decode step for forward pass 
         # Hint: Decode words one by one
         # Teacher forcing is used.
         # At each time-step, decode by attention-weighing the encoder's output based 
         # on the decoder's previous hidden state output
         # then generate a new word in the decoder with the previous word and the attention weighted encoding
-        # Your Code Here!
+        for t in range(max(decode_lengths)):
+          num = sum([1 if l > t else 0 for l in decode_lengths])
+          preds, alpha, h, c = self.one_step(embeddings[:num, t, :], encoder_out[:num], h[:num], c[:num])
+          predictions[:num,t,:] = preds
+          alphas[:num,t,:] = alpha
 
-        ############################################################################
         return predictions, encoded_captions, decode_lengths, alphas, sort_ind
 
     def one_step(self, embeddings, encoder_out, h, c):
-        ############################################################################
         # To Do: Implement the one time decode step for forward pass
         # this function can be used for test decode with beam search
         # return predicted scores over vocabs: preds
         # return attention weight: alpha
         # return hidden state and cell state: h, c
-        # Your Code Here!
-        
-        ############################################################################
+        z, alpha = self.attention(encoder_out, h)
+        beta = F.sigmoid(self.f_beta(h))
+        z = beta * z
+        h, c = self.decode_step(torch.cat([embeddings,z], dim=1),(h,c))
+        preds = self.fc(self.dropout(h))
+
         return preds, alpha, h, c
