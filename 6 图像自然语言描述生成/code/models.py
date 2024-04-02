@@ -144,8 +144,8 @@ class Attention(nn.Module):
         # Hint: Firstly, define linear layers to transform encoded tensor
         # and decoder's output tensor to attention dim; Secondly, define
         # attention linear layer to calculate values to be softmax-ed;
-        self.encoder_to_att = nn.Linear(encoder_dim, attention_dim)
-        self.decoder_to_att = nn.Linear(decoder_dim, attention_dim)
+        self.encoder_att = nn.Linear(encoder_dim, attention_dim)
+        self.decoder_att = nn.Linear(decoder_dim, attention_dim)
         self.att = nn.Linear(attention_dim, 1)
 
     def forward(self, encoder_out, decoder_hidden):
@@ -163,9 +163,9 @@ class Attention(nn.Module):
         # Compute the attention scores with the function f_att
         att1 = self.encoder_att(encoder_out)
         att2 = self.decoder_att(decoder_hidden).unsqueeze(1)
-        e = self.att(F.relu(att1 + att2))
-        alpha = F.softmax(e, dim=1)
-        z = (encoder_out * alpha).sum(dim=1)
+        e = self.att(F.relu(att1 + att2)).squeeze(2)
+        alpha = F.softmax(e)
+        z = (encoder_out * alpha.unsqueeze(2)).sum(dim=1)
 
         return z, alpha
 
@@ -188,10 +188,10 @@ class DecoderWithAttention(nn.Module):
         # To Do: define some layers for decoder with attention
         self.attention = Attention(encoder_dim, self.decoder_dim, self.attention_dim)
         self.embedding = nn.Embedding(self.vocab_size, self.embed_dim)
-        self.decode_step = nn.LSTMCell(self.embed_dim + self.attention_dim, self.decoder_dim)
-        self.init_h = nn.Linear(self.attention_dim, self.decoder_dim)
-        self.init_c = nn.Linear(self.attention_dim, self.decoder_dim)
-        self.beta = nn.Sigmoid()
+        self.decode_step = nn.LSTMCell(self.embed_dim + self.encoder_dim, self.decoder_dim)
+        self.init_h = nn.Linear(self.encoder_dim, self.decoder_dim)
+        self.init_c = nn.Linear(self.encoder_dim, self.decoder_dim)
+        self.beta = nn.Linear(self.decoder_dim, self.encoder_dim)
         self.fc = nn.Linear(self.decoder_dim, self.vocab_size)
         self.dropout = nn.Dropout(p=self.dropout)
 
@@ -258,8 +258,8 @@ class DecoderWithAttention(nn.Module):
         # return attention weight: alpha
         # return hidden state and cell state: h, c
         z, alpha = self.attention(encoder_out, h)
-        beta = F.sigmoid(self.f_beta(h))
-        z = beta * z
+        b = F.sigmoid(self.beta(h))
+        z = b * z
         h, c = self.decode_step(torch.cat([embeddings,z], dim=1),(h,c))
         preds = self.fc(self.dropout(h))
 
