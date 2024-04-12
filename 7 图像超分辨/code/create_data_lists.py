@@ -1,23 +1,29 @@
 import csv  
 import os
+import os.path as osp
+
+data_root = "/home/mw/input/dataset76853/"
+output_folder = '/home/mw/project/SRDataset'
+
+if not osp.exists(output_folder):
+    os.makedirs(output_folder)
 
 # train images folder
-train_HR_folder = '/data/SRDataset/div2k/DIV2K_train_HR'
-train_LR_folder = '/data/SRDataset/div2k/DIV2K_train_LR_bicubic/X4'
+train_HR_folder = data_root + 'DIV2K_train_HR/DIV2K_train_HR'
+train_LR_folder = data_root + 'DIV2K_train_HR/DIV2K_train_LR_bicubic/X4'
 # valid images folder
-valid_HR_folder = '/data/SRDataset/div2k/DIV2K_valid_HR'
-valid_LR_folder = '/data/SRDataset/div2k/DIV2K_valid_LR_bicubic/X4'
+valid_HR_folder = data_root + 'DIV2K_valid_HR/DIV2K_valid_HR'
+valid_LR_folder = data_root + 'DIV2K_valid_HR/DIV2K_valid_LR_bicubic/X4'
 # test images folder
-test_Set5_HR_folder = '/data/SRDataset/benchmark/Set5/HR'
-test_Set5_LR_folder = '/data/SRDataset/benchmark/Set5/LR_bicubic/X4'
-test_Set14_HR_folder = '/data/SRDataset/benchmark/Set14/HR'
-test_Set14_LR_folder = '/data/SRDataset/benchmark/Set14/LR_bicubic/X4'
-test_B100_HR_folder = '/data/SRDataset/benchmark/B100/HR'
-test_B100_LR_folder = '/data/SRDataset/benchmark/B100/LR_bicubic/X4'
-test_Urban100_HR_folder = '/data/SRDataset/benchmark/Urban100/HR'
-test_Urban100_LR_folder = '/data/SRDataset/benchmark/Urban100/LR_bicubic/X4'
+test_Set5_HR_folder = data_root + 'benchmark/benchmark/Set5/HR'
+test_Set5_LR_folder = data_root + 'benchmark/benchmark/Set5/LR_bicubic/X4'
+test_Set14_HR_folder = data_root + 'benchmark/benchmark/Set14/HR'
+test_Set14_LR_folder = data_root + 'benchmark/benchmark/Set14/LR_bicubic/X4'
+test_B100_HR_folder = data_root + 'benchmark/benchmark/B100/HR'
+test_B100_LR_folder = data_root + 'benchmark/benchmark/B100/LR_bicubic/X4'
+test_Urban100_HR_folder = data_root + 'benchmark/benchmark/Urban100/HR'
+test_Urban100_LR_folder = data_root + 'benchmark/benchmark/Urban100/LR_bicubic/X4'
 
-output_folder = '/data/SRDataset'
 
 train_HR_images = []
 train_LR_images = []
